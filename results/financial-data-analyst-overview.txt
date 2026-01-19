@@ -1,0 +1,252 @@
+Financial Data Analyst - Overview
+==================================
+
+Project Structure
+-----------------
+
+financial-data-analyst/
+├── app/
+│   ├── api/finance/route.ts      # Claude API + tool handling
+│   ├── finance/page.tsx          # Main chat interface (748 lines)
+│   └── layout.tsx                # Theme provider
+├── components/
+│   ├── ChartRenderer.tsx         # 6 chart types via Recharts
+│   ├── FilePreview.tsx           # Upload preview
+│   └── ui/                       # shadcn/ui components
+├── types/chart.ts                # ChartData interfaces
+├── utils/fileHandling.ts         # PDF/text/image parsing
+└── hooks/use-toast.ts
+
+
+Application Flow
+----------------
+
+User Input → File Upload (if any) → /api/finance → Claude API
+                                                      ↓
+                                           Tool: generate_graph_data
+                                                      ↓
+ChartRenderer ← chartData ← API Response ← Claude decides chart type
+
+
+Key Features
+------------
+
+1. 6 Chart Types: bar, multiBar, line, pie, area, stackedArea
+2. File Uploads: Images (base64), PDFs (text extraction via PDF.js), text files
+3. Tool Calling: Claude uses `generate_graph_data` tool to structure chart data
+4. Split View UI: Chat sidebar (1/3) + Chart panel (2/3) with pagination
+
+
+Key Files to Explore
+--------------------
+
+| File                            | Purpose                                  | Lines |
+|---------------------------------|------------------------------------------|-------|
+| app/finance/page.tsx            | Main UI, state management, file handling | 748   |
+| app/api/finance/route.ts        | Claude API, tool definition, data proc   | 465   |
+| components/ChartRenderer.tsx    | Chart factory, Recharts rendering        | 408   |
+| utils/fileHandling.ts           | PDF/text/base64 parsers                  | 101   |
+| types/chart.ts                  | TypeScript interfaces                    | 25    |
+
+
+Tech Stack
+----------
+
+- Next.js 14 (Edge Runtime)
+- Anthropic SDK
+- Recharts for visualization
+- shadcn/ui + Tailwind CSS
+- PDF.js (CDN-loaded)
+
+
+Chart Generation Mechanism
+--------------------------
+
+1. System prompt instructs Claude on 6 chart types and data structuring
+2. Tool schema defines `generate_graph_data` with chartType, config, data, chartConfig
+3. Claude analyzes user request and uploaded data
+4. Claude decides if visualization helps, selects chart type, structures data
+5. Frontend ChartRenderer routes to specific Recharts component
+
+
+File Upload Handling
+--------------------
+
+Supported formats:
+- Images: .png, .jpg, .gif, .webp → base64 encoding
+- PDFs: Text extraction via PDF.js → base64 encoding
+- Text: .txt, .csv, .md, .json, etc. → UTF-8 text → base64 encoding
+
+Flow:
+1. File type detection
+2. Processing (readFileAsBase64, readFileAsPDFText, or readFileAsText)
+3. Storage as FileUpload object with base64, fileName, mediaType, isText
+4. Message construction: text prepended for files, image block for images
+
+
+API Route: POST /api/finance
+----------------------------
+
+Request:
+  - messages: conversation history
+  - model: e.g., "claude-3-5-sonnet-20240620"
+
+Response:
+  - content: Claude's text explanation
+  - hasToolUse: boolean
+  - chartData: processed chart data for rendering
+  - toolUse: raw tool invocation data
+
+Features:
+  - Edge runtime for low latency
+  - Auto tool choice (Claude decides when to chart)
+  - Pie chart normalization
+  - Color variable assignment (--chart-1, --chart-2, etc.)
+
+================================================================================
+ENTRY 2: Code Reading Workflow
+================================================================================
+
+Entry Point (User Perspective)
+------------------------------
+
+User opens http://localhost:3000
+        ↓
+app/page.tsx (redirects to /finance)
+        ↓
+app/finance/page.tsx ← THIS IS THE MAIN ENTRY POINT
+
+
+Recommended Reading Order
+-------------------------
+
+Phase 1: Understand the UI and State
+
+1. app/finance/page.tsx (lines 1-100)
+   - State variables: messages, input, isLoading, selectedModel, currentUpload
+   - This tells you what the app tracks
+
+2. app/finance/page.tsx (scroll to JSX ~line 400+)
+   - See the split layout: left sidebar (chat) + right panel (charts)
+   - Understand the UI structure before diving into logic
+
+
+Phase 2: Follow the Data Flow
+
+3. app/finance/page.tsx → handleSubmit() (~line 200)
+   - How user input + files become an API request
+   - Message construction logic
+
+4. app/api/finance/route.ts (start from POST function)
+   - Tool definition: generate_graph_data
+   - System prompt (explains chart types to Claude)
+   - Response processing
+
+5. types/chart.ts
+   - Quick read - defines ChartData interface
+   - Now you understand what Claude returns
+
+
+Phase 3: Understand Rendering
+
+6. components/ChartRenderer.tsx
+   - Chart factory pattern: routes chartType to specific component
+   - Pick one chart (e.g., BarChart) and trace through
+
+7. app/finance/page.tsx → message rendering (~line 450)
+   - How messages with chartData trigger ChartRenderer
+
+
+Phase 4: Supporting Features
+
+8. utils/fileHandling.ts
+   - Three parsers: text, base64, PDF
+   - Called from page.tsx when user uploads
+
+9. components/FilePreview.tsx
+   - Simple display component
+
+
+Visual Flow Diagram
+-------------------
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER ACTIONS                              │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+         ┌────────────────────┼────────────────────┐
+         ▼                    ▼                    ▼
+    Type message        Upload file           Select model
+         │                    │                    │
+         │          ┌─────────┴─────────┐          │
+         │          ▼                   ▼          │
+         │    fileHandling.ts     FilePreview      │
+         │    (parse to base64)   (show preview)   │
+         │          │                              │
+         └──────────┼──────────────────────────────┘
+                    ▼
+         ┌─────────────────────┐
+         │  handleSubmit()     │  ← app/finance/page.tsx
+         │  - Build message    │
+         │  - Add file content │
+         └─────────┬───────────┘
+                   ▼
+         ┌─────────────────────┐
+         │  POST /api/finance  │  ← app/api/finance/route.ts
+         │  - Format for Claude│
+         │  - Include tools    │
+         └─────────┬───────────┘
+                   ▼
+         ┌─────────────────────┐
+         │  Claude API         │
+         │  - Analyzes input   │
+         │  - Decides: chart?  │
+         │  - Calls tool if yes│
+         └─────────┬───────────┘
+                   ▼
+         ┌─────────────────────┐
+         │  Response Processing│  ← app/api/finance/route.ts
+         │  - Extract text     │
+         │  - Extract chartData│
+         │  - Normalize colors │
+         └─────────┬───────────┘
+                   ▼
+         ┌─────────────────────┐
+         │  Update State       │  ← app/finance/page.tsx
+         │  - Add to messages  │
+         │  - Trigger re-render│
+         └─────────┬───────────┘
+                   ▼
+    ┌──────────────┴──────────────┐
+    ▼                             ▼
+┌─────────┐                 ┌─────────────┐
+│ Chat    │                 │ ChartRenderer│
+│ Sidebar │                 │ (if chart)   │
+└─────────┘                 └─────────────┘
+
+
+Key Code Locations
+------------------
+
+| What you want to understand | File                        | Lines (approx) |
+|-----------------------------|-----------------------------|----------------|
+| App state & initialization  | app/finance/page.tsx        | 1-50           |
+| File upload handling        | app/finance/page.tsx        | 100-180        |
+| Message submission          | app/finance/page.tsx        | 200-350        |
+| UI layout                   | app/finance/page.tsx        | 450-750        |
+| Claude tool definition      | app/api/finance/route.ts    | 20-120         |
+| System prompt               | app/api/finance/route.ts    | 130-250        |
+| Response processing         | app/api/finance/route.ts    | 300-450        |
+| Chart rendering             | components/ChartRenderer.tsx| all            |
+
+
+Quick Tips
+----------
+
+1. Start with the types - types/chart.ts is only 25 lines and defines the core data structure
+
+2. Use the UI first - Run `npm run dev` and interact with the app to see what it does before reading code
+
+3. Follow one request - Pick a simple case (user asks "show me a pie chart of X") and trace it through all files
+
+4. The tool is everything - The generate_graph_data tool definition in route.ts is the contract between Claude and the frontend
